@@ -75,17 +75,17 @@ public class FileService {
      */
     public Page<FileInfoVO> listFiles(int page, int size, String keyword) {
         Page<FileInfo> pageParam = new Page<>(page, size);
-        String escapedKeyword = null;
+        LambdaQueryWrapper<FileInfo> wrapper = new LambdaQueryWrapper<FileInfo>()
+                .ne(FileInfo::getStatus, 2)
+                .orderByDesc(FileInfo::getCreatedAt);
+
         if (keyword != null && !keyword.isBlank()) {
-            escapedKeyword = keyword
+            String escapedKeyword = keyword
                     .replace("\\", "\\\\")
                     .replace("%", "\\%")
                     .replace("_", "\\_");
+            wrapper.apply("original_name LIKE CONCAT('%', {0}, '%') ESCAPE '\\'", escapedKeyword);
         }
-        LambdaQueryWrapper<FileInfo> wrapper = new LambdaQueryWrapper<FileInfo>()
-                .ne(FileInfo::getStatus, 2)
-                .like(escapedKeyword != null, FileInfo::getOriginalName, escapedKeyword, '\\')
-                .orderByDesc(FileInfo::getCreatedAt);
 
         Page<FileInfo> result = fileInfoMapper.selectPage(pageParam, wrapper);
 
