@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<Void> handleBizException(BizException e) {
         log.warn("Business exception: code={}, msg={}", e.getCode(), e.getMessage());
         return R.fail(e.getCode(), e.getMessage());
@@ -41,6 +42,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<Void> handleMaxUpload(MaxUploadSizeExceededException e) {
         log.warn("File too large: {}", e.getMessage());
         return R.fail(400, "文件大小超出限制");
