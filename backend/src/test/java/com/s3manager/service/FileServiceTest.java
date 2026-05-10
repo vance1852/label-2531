@@ -104,17 +104,21 @@ class FileServiceTest {
         }
 
         @Test
-        @DisplayName("S3上传失败 - 应抛出异常，数据库事务回滚")
-        void upload_s3Failure_shouldThrow() {
+        @DisplayName("S3上传失败 - 应标记失败状态并抛出异常")
+        void upload_s3Failure_shouldMarkFailedAndThrow() {
             MockMultipartFile file = new MockMultipartFile(
                     "file", "fail.txt", "text/plain", "data".getBytes());
             when(fileInfoMapper.insert(any(FileInfo.class))).thenReturn(1);
+            when(fileInfoMapper.updateById(any(FileInfo.class))).thenReturn(1);
             doThrow(new RuntimeException("S3 connection refused"))
                     .when(s3Service).uploadFile(anyString(), any(), anyLong(), anyString());
 
-            assertThrows(RuntimeException.class, () -> fileService.upload(file));
-            verify(fileInfoMapper).insert(any(FileInfo.class));
-            verify(fileInfoMapper, never()).updateById(any(FileInfo.class));
+            BizException ex = assertThrows(BizException.class, () -> fileService.upload(file));
+            assertEquals(500, ex.getCode());
+
+            ArgumentCaptor<FileInfo> captor = ArgumentCaptor.forClass(FileInfo.class);
+            verify(fileInfoMapper).updateById(captor.capture());
+            assertEquals(3, captor.getValue().getStatus());
         }
     }
 

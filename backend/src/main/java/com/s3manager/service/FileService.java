@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 
-import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -35,7 +34,6 @@ public class FileService {
     /**
      * 普通文件上传
      */
-    @Transactional
     public FileInfoVO upload(MultipartFile file) {
         if (file.isEmpty()) {
             throw new BizException(400, "上传文件不能为空");
@@ -45,24 +43,25 @@ public class FileService {
         String storageKey = generateStorageKey(originalName);
         String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
-        // 先写数据库（可回滚），再上传 S3（不可回滚）
         FileInfo fileInfo = new FileInfo();
         fileInfo.setOriginalName(originalName);
         fileInfo.setStorageKey(storageKey);
         fileInfo.setContentType(contentType);
         fileInfo.setFileSize(file.getSize());
         fileInfo.setBucketName(s3Config.getBucketName());
-        fileInfo.setStatus(0); // 上传中
+        fileInfo.setStatus(0);
         fileInfoMapper.insert(fileInfo);
 
         try {
             s3Service.uploadFile(storageKey, file.getInputStream(), file.getSize(), contentType);
-        } catch (IOException e) {
+            fileInfo.setStatus(1);
+            fileInfoMapper.updateById(fileInfo);
+        } catch (Exception e) {
             log.error("File upload failed: {}", e.getMessage());
+            fileInfo.setStatus(3);
+            fileInfoMapper.updateById(fileInfo);
+            throw new BizException(500, "文件上传失败: " + e.getMessage());
         }
-
-        fileInfo.setStatus(1); // 已完成
-        fileInfoMapper.updateById(fileInfo);
 
         log.info("File uploaded: id={}, name={}, size={}", fileInfo.getId(), originalName, file.getSize());
         return FileInfoVO.from(fileInfo);
@@ -74,9 +73,14 @@ public class FileService {
     public Page<FileInfoVO> listFiles(int page, int size, String keyword) {
         Page<FileInfo> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<FileInfo> wrapper = new LambdaQueryWrapper<FileInfo>()
-                .ne(FileInfo::getStatus, 2)
-                .like(keyword != null && !keyword.isBlank(), FileInfo::getOriginalName, keyword)
-                .orderByDesc(FileInfo::getCreatedAt);
+                .ne(FileInfo::getStatus, 2);
+
+        if (keyword != null && !keyword.isBlank()) {
+            String escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+            wrapper.like(FileInfo::getOriginalName, escaped);
+        }
+
+        wrapper.orderByDesc(FileInfo::getCreatedAt);
 
         Page<FileInfo> result = fileInfoMapper.selectPage(pageParam, wrapper);
 
@@ -101,10 +105,15 @@ public class FileService {
     public void deleteFile(Long id) {
         FileInfo fileInfo = getFileOrThrow(id);
 
-        s3Service.deleteFile(fileInfo.getBucketName(), fileInfo.getStorageKey());
-
         fileInfo.setStatus(2);
         fileInfoMapper.updateById(fileInfo);
+
+        try {
+            s3Service.deleteFile(fileInfo.getBucketName(), fileInfo.getStorageKey());
+        } catch (Exception e) {
+            log.error("S3 delete failed for fileId={}, will retry later: {}", id, e.getMessage());
+        }
+
         log.info("File deleted: id={}, name={}", id, fileInfo.getOriginalName());
     }
 
@@ -164,6 +173,7 @@ public class FileService {
                         .partNumber(p.getPartNumber())
                         .eTag(p.getEtag())
                         .build())
+                .sorted((a, b) -> Integer.compare(a.partNumber(), b.partNumber()))
                 .toList();
 
         s3Service.completeMultipartUpload(fileInfo.getStorageKey(), fileInfo.getUploadId(), completedParts);

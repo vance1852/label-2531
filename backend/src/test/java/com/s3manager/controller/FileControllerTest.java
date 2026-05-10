@@ -78,7 +78,7 @@ class FileControllerTest {
                     "file", "empty.txt", "text/plain", new byte[0]);
 
             mockMvc.perform(multipart("/api/files/upload").file(file))
-                    .andExpect(status().isOk())
+                    .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value(400))
                     .andExpect(jsonPath("$.message").value("上传文件不能为空"));
         }
@@ -147,7 +147,7 @@ class FileControllerTest {
             when(fileService.getDownloadUrl(999L)).thenThrow(new BizException(404, "文件不存在"));
 
             mockMvc.perform(get("/api/files/download/999"))
-                    .andExpect(status().isOk())
+                    .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value(404))
                     .andExpect(jsonPath("$.message").value("文件不存在"));
         }
@@ -177,7 +177,7 @@ class FileControllerTest {
             doThrow(new BizException(404, "文件不存在")).when(fileService).deleteFile(999L);
 
             mockMvc.perform(delete("/api/files/999"))
-                    .andExpect(status().isOk())
+                    .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value(404));
         }
     }
