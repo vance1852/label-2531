@@ -19,6 +19,7 @@ import software.amazon.awssdk.services.s3.model.CompletedPart;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -59,6 +60,7 @@ public class FileService {
             s3Service.uploadFile(storageKey, file.getInputStream(), file.getSize(), contentType);
         } catch (IOException e) {
             log.error("File upload failed: {}", e.getMessage());
+            throw new BizException("文件上传失败: " + e.getMessage());
         }
 
         fileInfo.setStatus(1); // 已完成
@@ -73,9 +75,16 @@ public class FileService {
      */
     public Page<FileInfoVO> listFiles(int page, int size, String keyword) {
         Page<FileInfo> pageParam = new Page<>(page, size);
+        String escapedKeyword = null;
+        if (keyword != null && !keyword.isBlank()) {
+            escapedKeyword = keyword
+                    .replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_");
+        }
         LambdaQueryWrapper<FileInfo> wrapper = new LambdaQueryWrapper<FileInfo>()
                 .ne(FileInfo::getStatus, 2)
-                .like(keyword != null && !keyword.isBlank(), FileInfo::getOriginalName, keyword)
+                .like(escapedKeyword != null, FileInfo::getOriginalName, escapedKeyword, '\\')
                 .orderByDesc(FileInfo::getCreatedAt);
 
         Page<FileInfo> result = fileInfoMapper.selectPage(pageParam, wrapper);
@@ -101,10 +110,15 @@ public class FileService {
     public void deleteFile(Long id) {
         FileInfo fileInfo = getFileOrThrow(id);
 
-        s3Service.deleteFile(fileInfo.getBucketName(), fileInfo.getStorageKey());
-
         fileInfo.setStatus(2);
         fileInfoMapper.updateById(fileInfo);
+
+        try {
+            s3Service.deleteFile(fileInfo.getBucketName(), fileInfo.getStorageKey());
+        } catch (Exception e) {
+            log.warn("S3 delete failed (DB already marked deleted), will retry later: id={}, error={}", id, e.getMessage());
+        }
+
         log.info("File deleted: id={}, name={}", id, fileInfo.getOriginalName());
     }
 
@@ -160,6 +174,7 @@ public class FileService {
         }
 
         List<CompletedPart> completedParts = request.getParts().stream()
+                .sorted(Comparator.comparingInt(MultipartCompleteRequest.PartInfo::getPartNumber))
                 .map(p -> CompletedPart.builder()
                         .partNumber(p.getPartNumber())
                         .eTag(p.getEtag())
