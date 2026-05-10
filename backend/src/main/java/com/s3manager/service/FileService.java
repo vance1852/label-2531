@@ -58,7 +58,7 @@ public class FileService {
         try {
             s3Service.uploadFile(storageKey, file.getInputStream(), file.getSize(), contentType);
         } catch (IOException e) {
-            throw new BizException("文件上传失败: " + e.getMessage());
+            log.error("File upload failed: {}", e.getMessage());
         }
 
         fileInfo.setStatus(1); // 已完成

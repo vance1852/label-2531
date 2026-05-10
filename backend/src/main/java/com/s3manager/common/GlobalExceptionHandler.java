@@ -17,7 +17,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
     public R<Void> handleBizException(BizException e) {
-        log.warn("Business exception: {}", e.getMessage());
+        log.warn("Business exception: code={}, msg={}", e.getCode(), e.getMessage());
         return R.fail(e.getCode(), e.getMessage());
     }
 
