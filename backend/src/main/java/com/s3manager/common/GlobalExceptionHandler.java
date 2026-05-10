@@ -2,6 +2,7 @@ package com.s3manager.common;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -16,9 +17,21 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
-    public R<Void> handleBizException(BizException e) {
+    public ResponseEntity<R<Void>> handleBizException(BizException e) {
         log.warn("Business exception: code={}, msg={}", e.getCode(), e.getMessage());
-        return R.fail(e.getCode(), e.getMessage());
+        HttpStatus status = mapToHttpStatus(e.getCode());
+        return ResponseEntity.status(status).body(R.fail(e.getCode(), e.getMessage()));
+    }
+
+    private HttpStatus mapToHttpStatus(int code) {
+        return switch (code) {
+            case 400 -> HttpStatus.BAD_REQUEST;
+            case 401 -> HttpStatus.UNAUTHORIZED;
+            case 403 -> HttpStatus.FORBIDDEN;
+            case 404 -> HttpStatus.NOT_FOUND;
+            case 409 -> HttpStatus.CONFLICT;
+            default -> HttpStatus.INTERNAL_SERVER_ERROR;
+        };
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
