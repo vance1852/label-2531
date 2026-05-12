@@ -14,6 +14,8 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedUploadPartReq
 import software.amazon.awssdk.services.s3.presigner.model.UploadPartPresignRequest;
 
 import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
@@ -72,7 +74,9 @@ public class S3Service {
      * 生成下载预签名 URL（强制下载，不预览）
      */
     public String generatePresignedDownloadUrl(String bucket, String key, String originalName) {
-        String disposition = "attachment; filename=\"" + originalName + "\"";
+        String encodedName = URLEncoder.encode(originalName, StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        String disposition = "attachment; filename=\"" + encodedName + "\"; filename*=UTF-8''" + encodedName;
         PresignedGetObjectRequest presigned = s3Presigner.presignGetObject(
                 GetObjectPresignRequest.builder()
                         .signatureDuration(Duration.ofMinutes(s3Config.getPresignExpirationMinutes()))
