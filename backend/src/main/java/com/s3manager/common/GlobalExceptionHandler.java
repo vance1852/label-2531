@@ -16,9 +16,21 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
-    public R<Void> handleBizException(BizException e) {
+    public org.springframework.http.ResponseEntity<R<Void>> handleBizException(BizException e) {
         log.warn("Business exception: code={}, msg={}", e.getCode(), e.getMessage());
-        return R.fail(e.getCode(), e.getMessage());
+        org.springframework.http.HttpStatus httpStatus = mapCodeToHttpStatus(e.getCode());
+        return new org.springframework.http.ResponseEntity<>(R.fail(e.getCode(), e.getMessage()), httpStatus);
+    }
+
+    private org.springframework.http.HttpStatus mapCodeToHttpStatus(int code) {
+        return switch (code) {
+            case 400 -> org.springframework.http.HttpStatus.BAD_REQUEST;
+            case 401 -> org.springframework.http.HttpStatus.UNAUTHORIZED;
+            case 403 -> org.springframework.http.HttpStatus.FORBIDDEN;
+            case 404 -> org.springframework.http.HttpStatus.NOT_FOUND;
+            case 409 -> org.springframework.http.HttpStatus.CONFLICT;
+            default -> org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
+        };
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -41,6 +53,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<Void> handleMaxUpload(MaxUploadSizeExceededException e) {
         log.warn("File too large: {}", e.getMessage());
         return R.fail(400, "文件大小超出限制");
